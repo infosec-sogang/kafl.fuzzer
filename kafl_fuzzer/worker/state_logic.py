@@ -16,11 +16,16 @@ from kafl_fuzzer.technique.redqueen.mod import RedqueenInfoGatherer
 from kafl_fuzzer.technique.redqueen.workdir import RedqueenWorkdir
 from kafl_fuzzer.technique import trim, bitflip, arithmetic, interesting_values, havoc, radamsa
 from kafl_fuzzer.technique import grimoire_mutations as grimoire
+from kafl_fuzzer.worker.mutation_manager import MutationManager, Prog
+
+
+import random
 #from kafl_fuzzer.technique.trim import perform_trim, perform_center_trim, perform_extend
 #import kafl_fuzzer.technique.bitflip as bitflip
 #import kafl_fuzzer.technique.havoc as havoc
 #import kafl_fuzzer.technique.radamsa as radamsa
 #import kafl_fuzzer.technique.interesting_values as interesting_values
+
 
 class FuzzingStateLogic:
     HAVOC_MULTIPLIER = 4
@@ -43,6 +48,8 @@ class FuzzingStateLogic:
         self.stage_info_findings = 0
         self.attention_secs_start = None
         self.attention_execs_start = None
+
+        self.mutation_manager = MutationManager(self.worker.syscall_manager)
 
     def __str__(self):
         return str(self.worker)
@@ -83,9 +90,9 @@ class FuzzingStateLogic:
 
         return ret
 
-    def process_import(self, payload, metadata):
+    def process_initial(self, payload, metadata):
         self.init_stage_info(metadata)
-        self.handle_import(payload, metadata)
+        self.handle_initial(payload, metadata)
 
     def process_kickstart(self, kick_len):
         metadata = {"state": {"name": "kickstart"}, "id": 0}
@@ -94,27 +101,8 @@ class FuzzingStateLogic:
 
     def process_node(self, payload: bytes, metadata):
         self.init_stage_info(metadata)
-
-        if metadata["state"]["name"] == "initial":
-            new_payload = self.handle_initial(payload, metadata)
-            return self.create_update({"name": "redq/grim"}, None), new_payload
-        elif metadata["state"]["name"] == "redq/grim":
-            grimoire_info = self.handle_grimoire_inference(payload, metadata)
-            self.handle_redqueen(payload, metadata)
-            return self.create_update({"name": "deterministic"}, {"grimoire": grimoire_info}), None
-        elif metadata["state"]["name"] == "deterministic":
-            resume, afl_det_info = self.handle_deterministic(payload, metadata)
-            if resume:
-                return self.create_update({"name": "deterministic"}, {"afl_det_info": afl_det_info}), None
-            return self.create_update({"name": "havoc"}, {"afl_det_info": afl_det_info}), None
-        elif metadata["state"]["name"] == "havoc":
-            self.handle_havoc(payload, metadata)
-            return self.create_update({"name": "final"}, None), None
-        elif metadata["state"]["name"] == "final":
-            self.handle_havoc(payload, metadata)
-            return self.create_update({"name": "final"}, None), None
-        else:
-            raise ValueError("Unknown task stage %s" % metadata["state"]["name"])
+        self.handle_mutate(payload,metadata)
+        return self.create_update({"name" : "final"}, None), None
 
     def init_stage_info(self, metadata, verbose=False):
         stage = metadata["state"]["name"]
@@ -153,20 +141,54 @@ class FuzzingStateLogic:
             info.update(extra_info)
         return info
 
-    def handle_import(self, payload, metadata):
+    def handle_initial(self, _prog, metadata):
         # for funky targets, retry seed a couple times to avoid false negatives
         retries = 1
         if self.config.funky:
             retries = 8
 
+        # MutationManager를 통해 리소스를 생성하는 syscall만 추가
+        prog = Prog()
+        self.worker.logic.mutation_manager.add_call(prog, create_only=True)  # create_only 플래그로 리소스 생성 syscall만 추가
+
         for _ in range(retries):
-            _, is_new = self.execute(payload, label="import")
+            _, is_new = self.execute(prog, label="import")
             if is_new: break
 
         # Inform user if seed yields no new coverage. This may happen if -ip0 is
         # wrong or the harness is buggy.
         if not is_new:
             self.logger.debug("Imported payload produced no new coverage, skipping..")
+
+    def collect_vals(self, data, val_list):
+        if isinstance(data, dict):
+            if 'kind' in data and 'val' in data:
+                if data['kind'] == 'inptr' and isinstance(data['val'], (dict, list)):
+                    self.collect_vals(data['val'], val_list)
+                elif isinstance(data['val'], (int)):
+                    val_list.append(data)
+
+            for key, value in data.items():
+                if isinstance(value, (dict, list)):
+                    self.collect_vals(value, val_list)
+        elif isinstance(data, list):
+            for item in data:
+                self.collect_vals(item, val_list)
+
+    def handle_mutate(self, prog, metadata):
+
+        choice = random.randint(0, 2)
+        if choice == 0:
+            self.mutation_manager.add_call(prog)  # case 0: insert a new syscall
+        elif choice == 1:
+            self.mutation_manager.mutate_arg(prog)  # case 1: mutate one of the arguments
+        elif choice == 2:
+            self.mutation_manager.insert(prog)  # case 2: insert
+
+
+        self.execute(prog, label="type mutate")
+
+
 
     def handle_kickstart(self, kick_len, metadata):
         # random injection loop to kickstart corpus with no seeds, or to scan/test a target

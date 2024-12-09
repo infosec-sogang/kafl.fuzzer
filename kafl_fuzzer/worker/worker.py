@@ -17,7 +17,10 @@ import sys
 import shutil
 import tempfile
 import logging
+import json
+import pickle
 import lz4.frame as lz4
+from kafl_fuzzer.worker.mutation_manager import *
 
 #from kafl_fuzzer.common.config import FuzzerConfiguration
 from kafl_fuzzer.common.rand import rand
@@ -28,6 +31,7 @@ from kafl_fuzzer.manager.node import QueueNode
 from kafl_fuzzer.manager.statistics import WorkerStatistics
 from kafl_fuzzer.worker.state_logic import FuzzingStateLogic
 from kafl_fuzzer.worker.qemu import QemuIOException
+from kafl_fuzzer.worker.syscall_manager import SyscallManager
 from kafl_fuzzer.worker.qemu import qemu as Qemu
 from kafl_fuzzer.common.logger import WorkerLogAdapter
 
@@ -46,6 +50,12 @@ class WorkerTask:
         self.q = Qemu(self.pid, self.config)
         self.conn = ClientConnection(pid, config)
         self.statistics = WorkerStatistics(self.pid, config)
+
+        # 먼저 syscall manager를 초기화
+        self.syscall_manager = SyscallManager()
+        self.syscall_manager.parse_type_json("/home/hj/kAFL/kafl/examples/windows_x86_64/type/type.json") # 수정
+
+        # 그런 다음 fuzzing state logic 초기화
         self.logic = FuzzingStateLogic(self, config)
         self.bitmap_storage = BitmapStorage(self.config, "main")
 
@@ -55,12 +65,13 @@ class WorkerTask:
         self.t_check = config.timeout_check
         self.num_funky = 0
 
-    def handle_import(self, msg):
+    def handle_initial(self, msg):
         meta_data = {"state": {"name": "import"}, "id": 0}
         payload = msg["task"]["payload"]
+
         self.q.set_timeout(self.t_hard)
         try:
-            self.logic.process_import(payload, meta_data)
+            self.logic.process_initial(payload, meta_data)
         except QemuIOException:
             self.logger.warn("Execution failure on import.")
             self.conn.send_node_abort(None, None)
@@ -89,7 +100,8 @@ class WorkerTask:
         self.q.set_timeout(min(self.t_hard, t_dyn))
 
         try:
-            results, new_payload = self.logic.process_node(payload, meta_data)
+
+            results, new_payload = self.logic.process_node(pickle.loads(payload), meta_data)
         except QemuIOException:
             # mark node as crashing and free it before escalating
             self.logger.info("Qemu execution failed for node %d." % meta_data["id"])
@@ -154,7 +166,7 @@ class WorkerTask:
             if msg["type"] == MSG_RUN_NODE:
                 self.handle_node(msg)
             elif msg["type"] == MSG_IMPORT:
-                self.handle_import(msg)
+                self.handle_initial(msg)
             elif msg["type"] == MSG_BUSY:
                 self.handle_busy()
             else:
@@ -340,9 +352,22 @@ class WorkerTask:
         return self.__execute(data, retry=retry+1)
 
 
-    def execute(self, data, info, hard_timeout=False):
+    def execute(self, prog, info, hard_timeout=False):
+
+        data = None
+        if isinstance(prog, Prog):
+            data = prog.to_testcase()
+            data = json.loads(data)
+            data = json.dumps(data)
+            print("[DEBUG]", data , "\n")
+
+        else:
+            data = prog
+
+        data = data.encode("utf-8")
 
         if len(data) > self.payload_limit:
+            print(f"[DEBUG] Data exceeds payload limit ({len(data)} > {self.payload_limit}) \n")
             data = data[:self.payload_limit]
 
         exec_res = self.__execute(data)
@@ -387,7 +412,7 @@ class WorkerTask:
                     dyn_timeout = self.q.get_timeout()
                     self.q.set_timeout(self.t_hard)
                     # if still new, register the payload as regular or (true) timeout
-                    exec_res, is_new = self.execute(data, info, hard_timeout=True)
+                    exec_res, is_new = self.execute(prog, info, hard_timeout=True)
                     self.q.set_timeout(dyn_timeout)
                     if is_new and exec_res.exit_reason != "timeout":
                         self.logger.debug("Timeout checker found non-timeout with runtime %f >= %f!" % (exec_res.performance, dyn_timeout))
@@ -402,7 +427,7 @@ class WorkerTask:
                 self.q.store_crashlogs(exec_res.exit_reason, exec_res.hash())
 
             if crash or stable:
-                self.__send_to_manager(data, exec_res, info)
+                self.__send_to_manager(prog, exec_res, info)
 
         # restart Qemu on crash
         if crash:
