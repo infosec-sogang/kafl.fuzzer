@@ -170,42 +170,44 @@ class Prog:
             return total_size
 
         elif arg.kind == "array":
-            array_size_info = arg.arg_type.array_size_info
-            countkind = arg.arg_type.countkind
-            size = 0
+            repair_trigger = random.randint(1, 100)
 
-            array_kind = array_size_info.get("kind")
-            if array_kind == "adjacentfield":
-                offset = array_size_info.get("offset")
+            if repair_trigger < 92 :
+                array_size_info = arg.arg_type.array_size_info
+                countkind = arg.arg_type.countkind
 
-                for field in parent.val:
-                    if field.offset == offset:
-                        size = field.val
+                ref_size = 0
+                if countkind == "elem" :
+                    ref_size = arg.count
+                elif countkind == "byte" :
+                    ref_size = arg.count * arg.width
 
+                array_kind = array_size_info.get("kind")
+                if array_kind == "adjacentfield":
+                    offset = array_size_info.get("offset")
 
-            elif array_kind == "argfield":
-                arg_idx = array_size_info.get("idx")
-                offset_list = array_size_info.get("offset")
+                    for field in parent.val:
+                        if field.offset == offset:
+                            field.val = ref_size
 
+                elif array_kind == "argfield":
+                    arg_idx = array_size_info.get("idx")
+                    offset_list = array_size_info.get("offset")
 
-                if len(offset_list) != 0 :
-                    offset = offset_list[0]
+                    if len(offset_list) != 0 :
+                        offset = offset_list[0]
 
-                    ref_arg =syscall_args[f"arg{arg_idx}"].val
-                    if ref_arg.kind == "struct":
-                        size = ref_arg.val[offset].val
-                    elif ref_arg.kind == "array":
-                        size = ref_arg.val.val
-                    else: # scalar
-                        size = ref_arg.val
+                        ref_arg =syscall_args[f"arg{arg_idx}"].val
+                        if ref_arg.kind == "struct":
+                            ref_arg.val[offset].val = ref_size
 
-                else :
-                    size = syscall_args[f"arg{arg_idx}"].val
+                        elif ref_arg.kind == "array":
+                            ref_arg.val.val = ref_size
+                        else: # scalar
+                            ref_arg.val = ref_size
 
-            if countkind == "elem" :
-                arg.count = size
-            elif countkind == "byte" :
-                arg.count = int(size / arg.width)
+                    else :
+                        syscall_args[f"arg{arg_idx}"].val = ref_size
 
             self._repair_arg(syscall_args, arg.val, syscall_idx)
             return arg.count * arg.width
@@ -223,10 +225,6 @@ class Prog:
                 arg.id = resource_id
 
             return 8
-        else :
-            print("arg.kind = ", arg.kind)
-            return
-
 
     def repair_syscall_dependencies(self):
         syscall_idx = 1
@@ -324,16 +322,22 @@ class MutationManager:
             }
 
             width =  width_map.get(arg.kind)
-            arg.val = random.randint(0, (2 ** (width * 4)) - 1)
+            arg.val = random.randint(0, (2 ** (width * 8)) - 1)
+
 
         elif arg.kind == "ptr" :
             self._mutate_arg(arg.val)
+
         elif arg.kind == "array" :
-            self._mutate_arg(arg.val)
+            mutate_size_prob = random.randint(1,100)
+            if mutate_size_prob < 65 :
+                self._mutate_arg(arg.val)
+            else :
+                arg.count = random.randint(0,32)
+
         elif arg.kind == "struct" :
             chosen_field = random.choice(arg.val)
             self._mutate_arg(chosen_field)
-
 
     def insert(self,prog):
         syscall_len = len(prog.syscalls)
@@ -374,7 +378,7 @@ class MutationManager:
             kind = width_map.get(arg_type.width, "qword")
             arg.kind = kind
 
-            val = random.randint(0, 2**(arg_type.width*4) - 1)
+            val = random.randint(0, 2**(arg_type.width*8) - 1)
             arg.val = val
 
         elif type == "resource": # basic case
@@ -407,6 +411,7 @@ class MutationManager:
         elif type == "array": # inductive case
             arg.kind = "array"
             arg.width = arg_type.width
+            arg.count = random.randint(0,32)
             arg.val = self.to_arg_from(arg_type.content)
 
 
