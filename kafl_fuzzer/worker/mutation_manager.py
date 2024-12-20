@@ -24,6 +24,25 @@ class Arg:
         self.count = None
         self.width = None
 
+    def copy(self):
+        new_arg = Arg(self.arg_type)
+        new_arg.kind = self.kind
+        new_arg.size = self.size
+        new_arg.offset = self.offset
+        new_arg.id = self.id
+        new_arg.count = self.count
+        new_arg.width = self.width
+
+        if isinstance(self.val, Arg):
+            new_arg.val = self.val.copy()
+        elif isinstance(self.val, list):
+            new_arg.val = list()
+            for i in self.val :
+                new_arg.val.append(i.copy())
+        else :
+            new_arg.val = self.val
+
+        return new_arg
 
 
 class Syscall:
@@ -39,11 +58,24 @@ class Syscall:
     def add_arg(self, arg_key : str, arg : Arg):
         self.args[arg_key] = arg
 
+    def copy(self):
+        new_syscall = Syscall(self.name, self.sysnum, self.argnum, self.syscall_type)
+        new_syscall.idx = self.idx
+
+        new_syscall.args = {k: v.copy() for k, v in self.args.items()}
+        return new_syscall
+
+
 
 class Prog:
     def __init__(self):
-        #self.resource_usage = {} # detailed 구조 미정
         self.syscalls = [] # List[Syscall]
+    
+    def copy(self):
+        new_prog = Prog()
+        for syscall in self.syscalls:
+            new_prog.syscalls.append(syscall.copy())
+        return new_prog
 
     def get_resources_upto(self, index: int) -> list:
         generated_resources = list()
@@ -234,11 +266,6 @@ class Prog:
                 arg = syscall.args.get(arg_key)
                 self._repair_arg(syscall.args, arg, syscall_idx)
             syscall_idx += 1
-
-
-
-
-
 
 class MutationManager:
     def __init__(self, syscall_manager):

@@ -177,17 +177,20 @@ class FuzzingStateLogic:
 
     def handle_mutate(self, prog, metadata):
 
-        choice = random.randint(0, 2)
-        if choice == 0:
-            self.mutation_manager.add_call(prog)  # case 0: insert a new syscall
-        elif choice == 1:
-            self.mutation_manager.mutate_arg(prog)  # case 1: mutate one of the arguments
-        elif choice == 2:
-            self.mutation_manager.insert(prog)  # case 2: insert
+        for i in range(5):
+            copy_prog = prog.copy()
 
+            mutation_iterations = random.randint(3, 10)
+            for _ in range(mutation_iterations):
+                choice = random.randint(0, 2)
+                if choice == 0:
+                    self.mutation_manager.add_call(copy_prog)  
+                elif choice == 1:
+                    self.mutation_manager.mutate_arg(copy_prog)
+                elif choice == 2:
+                    self.mutation_manager.insert(copy_prog)
 
-        self.execute(prog, label="type mutate")
-
+            self.execute(copy_prog, label=f"type mutate {i}")
 
 
     def handle_kickstart(self, kick_len, metadata):
