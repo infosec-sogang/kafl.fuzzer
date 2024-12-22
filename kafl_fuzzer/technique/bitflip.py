@@ -117,64 +117,51 @@ def mutate_seq_four_walking_bits(data, func, skip_null=False, effector_map=None)
         data[i] = orig
 
 
-def mutate_seq_walking_byte(data, func, effector_map=None, limiter_map=None, skip_null=False):
+def mutate_seq_walking_byte(prog, arg, func, skip_null=False):
 
-    if effector_map:
-        orig_bitmap, _ = func(data)
-
-    for i in range(len(data)):
-        if limiter_map:
-            if not limiter_map[i]:
-                continue
-
-        if skip_null and not data[i]:
-            continue
-
-        data[i] ^= 0xFF
-        bitmap, _ = func(data, label="afl_flip_8/1")
-        if effector_map and orig_bitmap == bitmap:
-            effector_map[i] = 0
-        data[i] ^= 0xFF
-
-
-def mutate_seq_two_walking_bytes(data, func, effector_map=None, skip_null=False):
-    if len(data) <= 1:
+    if skip_null:
         return
 
-    for i in range(0, len(data)-1):
-        if effector_map:
-            if effector_map[i:i+2] == bytes(2):
-                continue
-
-        if skip_null and data[i:i+2] == bytes(2):
-            continue
-
-        data[i+0] ^= 0xFF
-        data[i+1] ^= 0xFF
-        func(data, label="afl_flip_8/2")
-        data[i+0] ^= 0xFF
-        data[i+1] ^= 0xFF
+    arg.val ^= 0xFF
+    func(prog, label="afl_flip_8/1")
 
 
-def mutate_seq_four_walking_bytes(data, func, effector_map=None, skip_null=False):
-    if len(data) <= 3:
+def mutate_seq_two_walking_bytes(prog, arg, func, skip_null=False):
+
+    if skip_null:
         return
 
-    for i in range(0, len(data)-3):
+    byte1 = (arg.val & 0xFF)
+    byte2 = (arg.val >> 8) & 0xFF
 
-        if effector_map:
-            if effector_map[i:i+4] == bytes(4):
-                continue
+    flipped_byte1 = byte1 ^ 0xFF
+    flipped_byte2 = byte2 ^ 0xFF
 
-        if skip_null and data[i:i+4] == bytes(4):
-            continue
+    arg.val = (flipped_byte2 << 8) | flipped_byte1
 
-        data[i+0] ^= 0xFF
-        data[i+1] ^= 0xFF
-        data[i+2] ^= 0xFF
-        data[i+3] ^= 0xFF
-        func(data, label="afl_flip_8/4")
-        data[i+0] ^= 0xFF
-        data[i+1] ^= 0xFF
-        data[i+2] ^= 0xFF
-        data[i+3] ^= 0xFF
+    func(prog, label="afl_flip_8/2")
+
+
+def mutate_seq_four_walking_bytes(prog, arg, func, skip_null=False):
+
+    if skip_null:
+        return
+    
+    byte1 = (arg.val & 0xFF)
+    byte2 = (arg.val >> 8) & 0xFF
+    byte3 = (arg.val >> 16) & 0xFF
+    byte4 = (arg.val >> 24) & 0xFF
+
+    flipped_byte1 = byte1 ^ 0xFF
+    flipped_byte2 = byte2 ^ 0xFF
+    flipped_byte3 = byte3 ^ 0xFF
+    flipped_byte4 = byte4 ^ 0xFF
+
+    arg.val = (
+        (flipped_byte4 << 24) |
+        (flipped_byte3 << 16) |
+        (flipped_byte2 << 8) |
+        flipped_byte1
+    )
+
+    func(prog, label="afl_flip_8/4")

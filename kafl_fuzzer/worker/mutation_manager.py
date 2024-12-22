@@ -1,8 +1,15 @@
 from kafl_fuzzer.common.rand import rand
+from kafl_fuzzer.technique.bitflip import *
 from kafl_fuzzer.worker.syscall_manager import *
 
 import random
-import json
+
+mutate_func_map = {
+    1: mutate_seq_walking_byte,
+    2: mutate_seq_two_walking_bytes,
+    4: mutate_seq_four_walking_bytes,
+    8: mutate_seq_four_walking_bytes,
+}
 
 
 class Arg:
@@ -330,16 +337,31 @@ class MutationManager:
             syscall = self.to_syscall_from_name(syscall_name)
             prog.syscalls.append(syscall)
 
+    def _fuzz_scalar(self, width, arg, prog, func):
 
-    def mutate_arg(self, prog):
+        origin = arg.val
+        # byte flip
+        mutate_func = mutate_func_map[width]
+        mutate_func(prog, arg, func)
+
+        # arithmatic
+        #arg.val = origin
+
+        # interesting value
+
+        # random
+        #arg.val = random.randint(0, (2 ** (width * 8)) - 1)
+
+
+    def mutate_arg(self, prog, func):
         chosen_syscall = random.choice(prog.syscalls)
         argnum = chosen_syscall.argnum
 
         chosen_arg_idx = random.randint(1, argnum)
         chsoen_arg = chosen_syscall.args[f"arg{chosen_arg_idx}"]
-        self._mutate_arg(chsoen_arg)
+        self._mutate_arg(chsoen_arg, prog, func)
 
-    def _mutate_arg(self, arg):
+    def _mutate_arg(self, arg, prog, func):
         if arg.kind == "dword" or arg.kind == "qword" or arg.kind == "word" or arg.kind == "byte":
             width_map = {
                 "byte" : 1,
@@ -349,22 +371,21 @@ class MutationManager:
             }
 
             width =  width_map.get(arg.kind)
-            arg.val = random.randint(0, (2 ** (width * 8)) - 1)
-
+            self._fuzz_scalar(width, arg, prog, func)
 
         elif arg.kind == "ptr" :
-            self._mutate_arg(arg.val)
+            self._mutate_arg(arg.val, prog, func)
 
         elif arg.kind == "array" :
             mutate_size_prob = random.randint(1,100)
             if mutate_size_prob < 65 :
-                self._mutate_arg(arg.val)
+                self._mutate_arg(arg.val, prog, func)
             else :
                 arg.count = random.randint(0,32)
 
         elif arg.kind == "struct" :
             chosen_field = random.choice(arg.val)
-            self._mutate_arg(chosen_field)
+            self._mutate_arg(chosen_field, prog, func)
 
     def insert(self,prog):
         syscall_len = len(prog.syscalls)

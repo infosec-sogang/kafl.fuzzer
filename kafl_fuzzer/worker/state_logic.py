@@ -147,7 +147,6 @@ class FuzzingStateLogic:
         if self.config.funky:
             retries = 8
 
-        # MutationManager를 통해 리소스를 생성하는 syscall만 추가
         prog = Prog()
         self.worker.logic.mutation_manager.add_call(prog, create_only=True)  # create_only 플래그로 리소스 생성 syscall만 추가
 
@@ -177,20 +176,25 @@ class FuzzingStateLogic:
 
     def handle_mutate(self, prog, metadata):
 
+        max_iterations = 10
+
         for i in range(5):
             copy_prog = prog.copy()
 
-            mutation_iterations = random.randint(3, 10)
-            for _ in range(mutation_iterations):
+            stacking = rand.int(5)
+            stacking = 1 << (stacking)
+            for _ in range(1+max_iterations//stacking): 
                 choice = random.randint(0, 2)
                 if choice == 0:
                     self.mutation_manager.add_call(copy_prog)  
+                    self.execute(copy_prog, label=f"add call mutate {i}")
                 elif choice == 1:
-                    self.mutation_manager.mutate_arg(copy_prog)
+                    self.mutation_manager.mutate_arg(copy_prog, self.execute)
                 elif choice == 2:
                     self.mutation_manager.insert(copy_prog)
+                    self.execute(copy_prog, label=f"insert mutate {i}")
 
-            self.execute(copy_prog, label=f"type mutate {i}")
+
 
 
     def handle_kickstart(self, kick_len, metadata):
@@ -201,7 +205,7 @@ class FuzzingStateLogic:
             payload = rand.bytes(kick_len)
             self.execute(payload, label="kickstart")
 
-    def handle_initial(self, payload, metadata):
+    def _handle_initial(self, payload, metadata):
         time_initial_start = time.time()
 
         if self.config.trace_cb:
