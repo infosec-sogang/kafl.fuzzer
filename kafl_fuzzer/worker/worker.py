@@ -53,9 +53,9 @@ class WorkerTask:
 
         # 먼저 syscall manager를 초기화
         self.syscall_manager = SyscallManager()
-        self.syscall_manager.parse_type_json("/home/hj/kAFL/kafl/examples/windows_x86_64/type/type.json") # 수정
+        type_info_path = config.type_info_path
+        self.syscall_manager.parse_type_json(type_info_path)
 
-        # 그런 다음 fuzzing state logic 초기화
         self.logic = FuzzingStateLogic(self, config)
         self.bitmap_storage = BitmapStorage(self.config, "main")
 
@@ -357,9 +357,7 @@ class WorkerTask:
         data = None
         if isinstance(prog, Prog):
             data = prog.to_testcase()
-            data = json.loads(data)
             data = json.dumps(data)
-            print("[DEBUG]", data , "\n")
 
         else:
             data = prog

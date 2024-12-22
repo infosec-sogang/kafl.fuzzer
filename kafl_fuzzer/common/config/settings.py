@@ -115,6 +115,7 @@ settings.validators.register(
     Validator("debug", default=False, cast=bool),
     # fuzz
     Validator("seed_dir", default=None, cast=cast_expand_path),
+    Validator("type_info_path", default=None, cast=cast_expand_path),
     Validator("dict", default=None, cast=cast_expand_path),
     Validator("funky", default=False, cast=bool),
     Validator("afl_dump_mode", default=False, cast=bool),

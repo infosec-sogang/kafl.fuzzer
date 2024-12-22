@@ -82,6 +82,7 @@ def add_args_general(parser):
 # kAFL/Fuzzer-specific options
 def add_args_fuzzer(parser):
     parser.add_argument('--seed-dir', metavar='<dir>', help='path to the seed directory.')
+    parser.add_argument('--type-info-path', dest='type_info_path', metavar='<file>',required=True, help='path to the type json.')
     parser.add_argument('--dict', required=False, metavar='<file>',
                         help='import dictionary file for use in havoc stage.', default=None)
     parser.add_argument('--funky', required=False, help='perform extra validation and store funky inputs.',
