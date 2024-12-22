@@ -1,15 +1,33 @@
 from kafl_fuzzer.common.rand import rand
 from kafl_fuzzer.technique.bitflip import *
+from kafl_fuzzer.technique.arithmetic import *
+from kafl_fuzzer.technique.interesting_values import *
+
 from kafl_fuzzer.worker.syscall_manager import *
 
 import random
 
-mutate_func_map = {
+byte_mutate_func_map = {
     1: mutate_seq_walking_byte,
     2: mutate_seq_two_walking_bytes,
     4: mutate_seq_four_walking_bytes,
     8: mutate_seq_four_walking_bytes,
 }
+
+arithmetic_mutate_func_map = {
+    1: mutate_seq_8_bit_arithmetic,   
+    2: mutate_seq_16_bit_arithmetic, 
+    4: mutate_seq_32_bit_arithmetic, 
+    8: mutate_seq_32_bit_arithmetic
+}
+
+interesting_mutate_func_map = {
+    1: mutate_seq_8_bit_interesting,  
+    2: mutate_seq_16_bit_interesting, 
+    4: mutate_seq_32_bit_interesting, 
+    8: mutate_seq_32_bit_interesting
+}
+
 
 
 class Arg:
@@ -341,16 +359,22 @@ class MutationManager:
 
         origin = arg.val
         # byte flip
-        mutate_func = mutate_func_map[width]
+        mutate_func = byte_mutate_func_map[width]
         mutate_func(prog, arg, func)
 
         # arithmatic
-        #arg.val = origin
+        arg.val = origin
+        mutate_func = arithmetic_mutate_func_map[width]
+        mutate_func(prog, arg, func)
 
         # interesting value
+        arg.val = origin
+        mutate_func = interesting_mutate_func_map[width]
+        mutate_func(prog, arg, func)
 
         # random
-        #arg.val = random.randint(0, (2 ** (width * 8)) - 1)
+        arg.val = random.randint(0, (2 ** (width * 8)) - 1)
+        func(prog, "random mutate")
 
 
     def mutate_arg(self, prog, func):
