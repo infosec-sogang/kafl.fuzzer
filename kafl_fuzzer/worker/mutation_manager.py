@@ -4,6 +4,7 @@ from kafl_fuzzer.technique.arithmetic import *
 from kafl_fuzzer.technique.interesting_values import *
 
 from kafl_fuzzer.worker.syscall_manager import *
+import kafl_fuzzer.config as config
 
 import random
 
@@ -229,7 +230,7 @@ class Prog:
         elif arg.kind == "array":
             repair_trigger = random.randint(1, 100)
 
-            if repair_trigger < 92 :
+            if repair_trigger < config.REPAIR_TRIGGER_PROB :
                 array_size_info = arg.arg_type.array_size_info
                 countkind = arg.arg_type.countkind
 
@@ -327,11 +328,11 @@ class MutationManager:
 
     def _add_random_call(self, prog, syscall_len):
         rand_num = random.randint(0, 99)
-        if rand_num < 30:  # 리소스 생성
+        if rand_num < config.RESOURCE_CREATION_THRESHOLD:  
             self._add_resource_creation_call(prog, syscall_len)
-        elif rand_num < 70:  # 리소스 사용
+        elif rand_num < config.RESOURCE_USAGE_THRESHOLD:   
             self._add_resource_usage_call(prog, syscall_len)
-        else:  # 독립적인 syscall 추가
+        else:
             self._add_independent_call(prog)
 
     def _add_resource_usage_call(self, prog, syscall_len):
@@ -402,7 +403,7 @@ class MutationManager:
 
         elif arg.kind == "array" :
             mutate_size_prob = random.randint(1,100)
-            if mutate_size_prob < 65 :
+            if mutate_size_prob < config.MUTATE_ARRAY_SIZE_PROB :
                 self._mutate_arg(arg.val, prog, func)
             else :
                 arg.count = random.randint(0,32)
@@ -483,7 +484,7 @@ class MutationManager:
         elif type == "array": # inductive case
             arg.kind = "array"
             arg.width = arg_type.width
-            arg.count = random.randint(0,32)
+            arg.count = random.randint(0,config.ARRAY_COUNT_MAX)
             arg.val = self.to_arg_from(arg_type.content)
 
 

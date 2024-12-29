@@ -20,6 +20,8 @@ from kafl_fuzzer.worker.mutation_manager import MutationManager, Prog
 
 
 import random
+import kafl_fuzzer.config as config
+
 #from kafl_fuzzer.technique.trim import perform_trim, perform_center_trim, perform_extend
 #import kafl_fuzzer.technique.bitflip as bitflip
 #import kafl_fuzzer.technique.havoc as havoc
@@ -176,13 +178,13 @@ class FuzzingStateLogic:
 
     def handle_mutate(self, prog, metadata):
 
-        max_iterations = 10
+        max_iterations = config.MAX_MUTATION_ITERATIONS
 
-        for i in range(5):
+        for i in range(config.PER_TESTCASE_MUTATION_ROUNDS):
             copy_prog = prog.copy()
 
-            stacking = rand.int(5)
-            stacking = 1 << (stacking)
+            stacking = 1 << rand.int(config.STACKING_BITSHIFT_RANGE)
+
             for _ in range(1+max_iterations//stacking): 
                 choice = random.randint(0, 2)
                 if choice == 0:
