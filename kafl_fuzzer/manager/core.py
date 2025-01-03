@@ -100,7 +100,8 @@ def start(settings: LazySettings):
     manager = ManagerTask(settings)
 
     workers = []
-    for i in range(num_worker):
+    #for i in range(num_worker):
+    for i in range(1):
         workers.append(multiprocessing.Process(name="Worker " + str(i), target=worker_loader, args=(i,settings)))
         workers[i].start()
 

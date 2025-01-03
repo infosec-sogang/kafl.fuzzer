@@ -18,6 +18,7 @@ from kafl_fuzzer.technique import trim, bitflip, arithmetic, interesting_values,
 from kafl_fuzzer.technique import grimoire_mutations as grimoire
 from kafl_fuzzer.worker.mutation_manager import MutationManager, Prog
 
+import kafl_fuzzer.worker.profiler as profiler
 
 import random
 import kafl_fuzzer.config as config
@@ -181,7 +182,10 @@ class FuzzingStateLogic:
         max_iterations = config.MAX_MUTATION_ITERATIONS
 
         for i in range(config.PER_TESTCASE_MUTATION_ROUNDS):
+
+            start = profiler.time_start()
             copy_prog = prog.copy()
+            profiler.time_end("prog.copy", start)
 
             stacking = 1 << rand.int(config.STACKING_BITSHIFT_RANGE)
 

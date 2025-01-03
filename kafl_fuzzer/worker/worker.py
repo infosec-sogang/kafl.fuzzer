@@ -21,6 +21,7 @@ import json
 import pickle
 import lz4.frame as lz4
 from kafl_fuzzer.worker.mutation_manager import *
+import kafl_fuzzer.worker.profiler as profiler
 
 #from kafl_fuzzer.common.config import FuzzerConfiguration
 from kafl_fuzzer.common.rand import rand
@@ -100,7 +101,6 @@ class WorkerTask:
         self.q.set_timeout(min(self.t_hard, t_dyn))
 
         try:
-
             results, new_payload = self.logic.process_node(pickle.loads(payload), meta_data)
         except QemuIOException:
             # mark node as crashing and free it before escalating
@@ -140,6 +140,7 @@ class WorkerTask:
         # start Qemu and commence main worker loop
         try:
             if self.q.start():
+                profiler.init("/dev/shm/kafl_root/profile")
                 self.loop()
             else:
                 self.logger.error("Failed to launch Qemu.")
@@ -255,6 +256,7 @@ class WorkerTask:
         return exec_res
 
     def __send_to_manager(self, data, exec_res, info):
+        start = profiler.time_start()
         info["time"] = time.time()
         info["exit_reason"] = exec_res.exit_reason
         info["performance"] = exec_res.performance
@@ -263,6 +265,7 @@ class WorkerTask:
         info["trashed"]     = exec_res.trashed
         if self.conn is not None:
             self.conn.send_new_input(data, exec_res.copy_to_array(), info)
+        profiler.time_end("send_to_manager", start)
 
     def trace_payload(self, data, info):
         # Legacy implementation of -trace (now -trace_cb) using libxdc_edge_callback hook.
@@ -334,6 +337,7 @@ class WorkerTask:
 
     def __execute(self, data, retry=0):
 
+        start = profiler.time_start()
         try:
             self.q.set_payload(data)
             res = self.q.send_payload()
@@ -349,10 +353,13 @@ class WorkerTask:
             self.statistics.event_reload("shm/socket error")
             if not self.q.restart():
                 raise QemuIOException("Qemu restart failure.") from e
+        profiler.time_end("__execute", start)
         return self.__execute(data, retry=retry+1)
 
 
     def execute(self, prog, info, hard_timeout=False):
+
+        start = profiler.time_start()
 
         data = None
         if isinstance(prog, Prog):
@@ -431,5 +438,7 @@ class WorkerTask:
         if crash:
             self.statistics.event_reload(exec_res.exit_reason)
             self.q.reload()
+        
+        profiler.time_end("execute", start)
 
         return exec_res, is_new_input

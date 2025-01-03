@@ -4,6 +4,7 @@ from kafl_fuzzer.technique.arithmetic import *
 from kafl_fuzzer.technique.interesting_values import *
 
 from kafl_fuzzer.worker.syscall_manager import *
+import kafl_fuzzer.worker.profiler as profiler
 import kafl_fuzzer.config as config
 
 import random
@@ -176,9 +177,12 @@ class Prog:
         return syscall_list
 
     def to_testcase(self):
+        start = profiler.time_start()
         self.repair_syscall_dependencies()
 
         tc = self.serialize_syscall()
+
+        profiler.time_end("to_testcase" , start)
         return tc
 
     def get_created_resource_ids_upto(self, resource_types, idx):
@@ -329,11 +333,18 @@ class MutationManager:
     def _add_random_call(self, prog, syscall_len):
         rand_num = random.randint(0, 99)
         if rand_num < config.RESOURCE_CREATION_THRESHOLD:  
+            start = profiler.time_start()
             self._add_resource_creation_call(prog, syscall_len)
+            profiler.time_end("add_resource_creation_call", start)
         elif rand_num < config.RESOURCE_USAGE_THRESHOLD:   
+            start = profiler.time_start()
             self._add_resource_usage_call(prog, syscall_len)
+            profiler.time_end("add_resource_usage_call", start)
         else:
+            start = profiler.time_start()
             self._add_independent_call(prog)
+            profiler.time_end("add_independent_call", start)
+
 
     def _add_resource_usage_call(self, prog, syscall_len):
         used_resources_in_prog = set(prog.get_resources_upto(syscall_len))
@@ -379,14 +390,15 @@ class MutationManager:
 
 
     def mutate_arg(self, prog, func):
+        start = profiler.time_start()
         chosen_syscall = random.choice(prog.syscalls)
         argnum = chosen_syscall.argnum
 
         chosen_arg_idx = random.randint(1, argnum)
         chsoen_arg = chosen_syscall.args[f"arg{chosen_arg_idx}"]
-        self._mutate_arg(chsoen_arg, prog, func)
+        self._mutate_arg(chsoen_arg, prog, func, start)
 
-    def _mutate_arg(self, arg, prog, func):
+    def _mutate_arg(self, arg, prog, func, start_time):
         if arg.kind == "dword" or arg.kind == "qword" or arg.kind == "word" or arg.kind == "byte":
             width_map = {
                 "byte" : 1,
@@ -396,21 +408,24 @@ class MutationManager:
             }
 
             width =  width_map.get(arg.kind)
+            profiler.time_end("mutate_arg_parsing", start_time)
             self._fuzz_scalar(width, arg, prog, func)
 
         elif arg.kind == "ptr" :
-            self._mutate_arg(arg.val, prog, func)
+            self._mutate_arg(arg.val, prog, func, start_time)
 
         elif arg.kind == "array" :
             mutate_size_prob = random.randint(1,100)
             if mutate_size_prob < config.MUTATE_ARRAY_SIZE_PROB :
-                self._mutate_arg(arg.val, prog, func)
+                self._mutate_arg(arg.val, prog, func, start_time)
             else :
                 arg.count = random.randint(0,32)
+                profiler.time_end("mutate_arg_parsing", start_time)
+                func(prog, "array size mutate")
 
         elif arg.kind == "struct" :
             chosen_field = random.choice(arg.val)
-            self._mutate_arg(chosen_field, prog, func)
+            self._mutate_arg(chosen_field, prog, func, start_time)
 
     def insert(self,prog):
         syscall_len = len(prog.syscalls)
